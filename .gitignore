@@ -1,0 +1,7 @@
+# Never commit anything containing neighbor names or Supabase admin keys.
+*.sql.local
+seed.sql
+*.env
+.env*
+neighborhood-map-*.json
+.DS_Store

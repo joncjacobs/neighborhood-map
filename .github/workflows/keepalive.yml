@@ -1,0 +1,26 @@
+# Free Supabase projects pause after a week with no activity. This calls a
+# harmless ping() function twice a week so that doesn't happen.
+# Needs two repository secrets: SUPABASE_URL and SUPABASE_ANON_KEY
+# (Settings -> Secrets and variables -> Actions).
+name: Keep Supabase awake
+
+on:
+  schedule:
+    - cron: "17 14 * * 1,4"   # Mondays and Thursdays, 14:17 UTC
+  workflow_dispatch:          # lets you run it by hand from the Actions tab
+
+permissions: {}               # the job needs no access to this repo
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping database
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          curl --fail --silent --show-error -X POST "$SUPABASE_URL/rest/v1/rpc/ping" \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+            -H "Content-Type: application/json" -d '{}'

@@ -333,12 +333,7 @@ button { font: inherit; }
 .hh-info { display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
 .hh-info .k { color: var(--muted); margin-right: 4px; }
 .hh-info .link { align-self: flex-start; }
-.add-btn { margin-top: 10px; width: 100%; }
-.deed { margin-top: 14px; font-size: 14px; }
-.deed summary { color: var(--muted); cursor: pointer; }
-.deed > div { margin-top: 6px; }
-.deed .muted { font-size: 12px; margin: 4px 0 0; }
-.edit-form {
+.add-btn { margin-top: 10px; width: 100%; }.edit-form {
   display: flex;
   flex-direction: column;
   gap: 10px;

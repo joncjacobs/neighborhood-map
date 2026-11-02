@@ -404,18 +404,16 @@
       return;
     }
     const closeBtn = '<button class="icon" data-action="close" aria-label="Close">&times;</button>';
+    // Not met: show nothing about who lives here. The stored public-record names
+    // only appear after a deliberate "We've met them".
     if (!h.introduced) {
-      const deed = labelFor(parcel);
       el.innerHTML = `
         <div class="detail-head">
           <div><h2>${esc(lot.address)}</h2><div class="muted">Not met yet</div></div>
           ${closeBtn}
         </div>
         <div class="detail-body">
-          <button class="add-btn" data-action="set-met" data-value="true">We've met them</button>
-          ${deed ? `<details class="deed"><summary>Public name</summary><div>${esc(deed)}</div>
-            <p class="muted">From the county property record. Hidden on the map until you've met.</p></details>` : ""}
-        </div>`;
+          <button class="add-btn" data-action="set-met" data-value="true">We've met them</button>        </div>`;
       return;
     }
     const ps = peopleOf(parcel);

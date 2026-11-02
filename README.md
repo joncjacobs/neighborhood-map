@@ -9,7 +9,7 @@ Signed out, the page shows a sign-in screen over an empty country-wide map.
 
 - **Tap** a lot (or hover on a computer) to see who lives there; tap to open details and edit.
 - Names start out hidden. A lot shows names only after you tap **We've met them** on it; until then
-  the map, hover, list and search show just the address, and the outline is dashed.
+  the map, hover, list, search and the lot's own panel show just the address, and the outline is dashed.
 - **Show full names / Show first names / Hide names** cycles the labels on lots you've met.
 - **List** is searchable by name, address or what they've told us.
 - Your names and map choices are saved to your own account, so each of you keeps your own.

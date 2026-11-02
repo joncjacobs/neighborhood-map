@@ -273,7 +273,7 @@ input, select, textarea {
 }
 textarea { resize: vertical; }
 button { font: inherit; }
-.primary, .form-actions button, .add-btn, .file-btn {
+.primary, .form-actions button, .add-btn {
   border: 1px solid var(--line);
   background: var(--bg);
   color: var(--fg);
@@ -315,8 +315,7 @@ button { font: inherit; }
   color: var(--muted);
 }
 .person { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; border-bottom: 1px solid var(--line); }
-.avatar { width: 52px; height: 52px; border-radius: 50%; object-fit: cover; flex: none; background: var(--hover); }
-.avatar.initials { display: grid; place-items: center; font-weight: 600; color: var(--muted); }
+.avatar { width: 44px; height: 44px; border-radius: 50%; flex: none; background: var(--hover); display: grid; place-items: center; font-weight: 600; color: var(--muted); }
 .person-body { flex: 1; min-width: 0; }
 .person .who { font-weight: 600; }
 .contact a { color: #2563eb; text-decoration: none; word-break: break-all; }
@@ -337,7 +336,5 @@ button { font: inherit; }
   background: var(--hover);
 }
 .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.photo-row { display: flex; align-items: center; gap: 12px; }
-.file-btn { display: inline-block; color: var(--fg); font-size: 14px; }
 .form-actions { display: flex; align-items: center; gap: 8px; }
 .form-actions .spacer { flex: 1; }

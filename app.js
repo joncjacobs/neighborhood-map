@@ -8,8 +8,6 @@
   }
 
   const REFRESH_AFTER_MS = 30 * 1000;  // re-fetch when the app returns to the foreground
-  const PHOTO_MAX_PX = 800;
-  const SIGNED_URL_SECONDS = 15 * 60;  // photo links stop working after this
 
   const cfg = window.APP_CONFIG || {};
   const configured = cfg.supabaseUrl && !/YOUR-/.test(cfg.supabaseUrl + cfg.supabaseAnonKey);
@@ -21,7 +19,6 @@
   // ---- State --------------------------------------------------------------
   const households = new Map(); // parcel -> row
   const people = new Map();     // parcel -> [rows], sorted
-  const photoUrls = new Map();  // photo_path -> { url, expires }
   let lastLoad = 0;
   let openParcel = null;
   let editing = null;           // { kind: "household" | "person" | "new-person", id }
@@ -299,16 +296,14 @@
   }
 
   function personCard(p) {
-    const photo = p.photo_path
-      ? `<img class="avatar" data-photo="${esc(p.photo_path)}" alt="">`
-      : `<div class="avatar initials">${esc((p.first_name || "?")[0])}${esc((p.last_name || "")[0] || "")}</div>`;
+    const initials = `<div class="avatar initials">${esc((p.first_name || "?")[0])}${esc((p.last_name || "")[0] || "")}</div>`;
     const meta = [p.role === "child" ? "Child" : null, p.age_grade, p.job].filter(Boolean).join(" · ");
     const contact = [
       p.phone ? `<a href="${esc(telHref(p.phone))}">${esc(p.phone)}</a>` : "",
       p.email ? `<a href="mailto:${esc(p.email)}">${esc(p.email)}</a>` : "",
     ].filter(Boolean).join(" · ");
     return `<div class="person">
-      ${photo}
+      ${initials}
       <div class="person-body">
         <div class="who">${esc(fullName(p))}</div>
         ${meta ? `<div class="muted">${esc(meta)}</div>` : ""}
@@ -342,12 +337,6 @@
         <label>Email <input name="email" type="email" value="${v("email")}"></label>
       </div>
       <label>Notes <textarea name="notes" rows="3">${v("notes")}</textarea></label>
-      ${isNew ? "" : `<div class="photo-row">
-        <label class="file-btn">${p.photo_path ? "Replace photo" : "Add photo"}
-          <input type="file" name="photo" accept="image/*" hidden>
-        </label>
-        ${p.photo_path ? '<button type="button" class="link danger" data-action="remove-photo">Remove photo</button>' : ""}
-      </div>`}
       <div class="form-actions">
         ${isNew ? "" : '<button type="button" class="link danger" data-action="delete-person">Delete person</button>'}
         <span class="spacer"></span>
@@ -417,23 +406,6 @@
         <h3>Household</h3>
         ${hhInfo}
       </div>`;
-    loadPhotos(el);
-  }
-
-  async function loadPhotos(root) {
-    const imgs = [...root.querySelectorAll("img[data-photo]")];
-    const now = Date.now();
-    const need = [...new Set(imgs.map((i) => i.dataset.photo))]
-      .filter((path) => !(photoUrls.get(path) && photoUrls.get(path).expires > now + 60000));
-    if (need.length) {
-      const { data, error } = await db.storage.from("photos").createSignedUrls(need, SIGNED_URL_SECONDS);
-      if (error) { showStatus("Couldn't load photos: " + error.message, 5000); return; }
-      data.forEach((d) => d.signedUrl && photoUrls.set(d.path, { url: d.signedUrl, expires: now + SIGNED_URL_SECONDS * 1000 }));
-    }
-    imgs.forEach((img) => {
-      const u = photoUrls.get(img.dataset.photo);
-      if (u) img.src = u.url;
-    });
   }
 
   $("detail").addEventListener("click", async (ev) => {
@@ -455,21 +427,13 @@
       const p = findPerson(editing.id);
       if (!confirm(`Delete ${fullName(p)}?`)) return;
       await deletePerson(p);
-    } else if (action === "remove-photo") {
-      await setPhoto(findPerson(editing.id), null);
     }
-  });
-
-  $("detail").addEventListener("change", async (ev) => {
-    if (ev.target.name !== "photo" || !ev.target.files.length) return;
-    await setPhoto(findPerson(editing.id), ev.target.files[0]);
   });
 
   $("detail").addEventListener("submit", async (ev) => {
     ev.preventDefault();
     const form = ev.target;
-    const fields = Object.fromEntries([...new FormData(form)].filter(([k]) => k !== "photo")
-      .map(([k, v]) => [k, String(v).trim() || null]));
+    const fields = Object.fromEntries([...new FormData(form)].map(([k, v]) => [k, String(v).trim() || null]));
     form.querySelector('button[type="submit"]').disabled = true;
     if (form.dataset.form === "household") await saveHousehold(fields);
     else if (form.dataset.id) await savePerson(findPerson(form.dataset.id), fields);
@@ -521,53 +485,16 @@
     const { data, error } = await db.from("people").insert(Object.assign({ parcel: openParcel, sort }, fields)).select().single();
     if (error) { showStatus("Couldn't add: " + error.message, 6000); return; }
     people.set(openParcel, [...peopleOf(openParcel), data]);
-    editing = { kind: "person", id: data.id }; // stay open so a photo can be added
+    editing = null;
     afterChange();
   }
 
   async function deletePerson(p) {
     const { error } = await db.from("people").delete().eq("id", p.id);
     if (error) { showStatus("Couldn't delete: " + error.message, 6000); return; }
-    if (p.photo_path) await db.storage.from("photos").remove([p.photo_path]);
     people.set(p.parcel, peopleOf(p.parcel).filter((x) => x.id !== p.id));
     editing = null;
     afterChange();
-  }
-
-  async function setPhoto(p, file) {
-    let path = null;
-    if (file) {
-      showStatus("Uploading photo…");
-      let blob;
-      try { blob = await shrinkImage(file); } catch (e) { showStatus("Couldn't read that image.", 5000); return; }
-      path = `${p.id}/${crypto.randomUUID()}.jpg`;
-      const { error } = await db.storage.from("photos").upload(path, blob, { contentType: "image/jpeg" });
-      if (error) { showStatus("Upload failed: " + error.message, 6000); return; }
-    }
-    const saved = await guardedUpdate("people", "id", p, { photo_path: path });
-    if (!saved) { if (path) await db.storage.from("photos").remove([path]); return; }
-    if (p.photo_path) await db.storage.from("photos").remove([p.photo_path]);
-    replacePerson(saved);
-    showStatus(file ? "Photo saved." : "Photo removed.", 2500);
-    renderDetail();
-  }
-
-  function shrinkImage(file) {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      const url = URL.createObjectURL(file);
-      img.onload = () => {
-        const scale = Math.min(1, PHOTO_MAX_PX / Math.max(img.naturalWidth, img.naturalHeight));
-        const c = document.createElement("canvas");
-        c.width = Math.round(img.naturalWidth * scale);
-        c.height = Math.round(img.naturalHeight * scale);
-        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-        URL.revokeObjectURL(url);
-        c.toBlob((b) => (b ? resolve(b) : reject(new Error("encode failed"))), "image/jpeg", 0.82);
-      };
-      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("decode failed")); };
-      img.src = url;
-    });
   }
 
   function replacePerson(saved) {
@@ -612,7 +539,6 @@
   function clearData() {
     households.clear();
     people.clear();
-    photoUrls.clear();
     lastLoad = 0;
     closeDetail();
     buildLots();
@@ -636,7 +562,6 @@
     await loadAll();
     const out = {
       exportedAt: new Date().toISOString(),
-      note: "Photos are not included; photo_path points into the Supabase 'photos' bucket.",
       households: [...households.values()],
       people: [...people.values()].flat(),
     };

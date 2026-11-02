@@ -1,4 +1,4 @@
--- Neighborhood Map: tables, row-level security and photo storage.
+-- Neighborhood Map: tables and row-level security.
 -- Run once in the Supabase dashboard: SQL Editor -> New query -> paste -> Run.
 -- Safe to re-run: everything is created "if not exists" or replaced.
 
@@ -42,7 +42,7 @@ create table if not exists public.households (
   updated_by    uuid default auth.uid()
 );
 
--- Adults and kids living at a household. One optional photo per person.
+-- Adults and kids living at a household.
 create table if not exists public.people (
   id          uuid primary key default gen_random_uuid(),
   parcel      text not null references public.households (parcel) on delete cascade,
@@ -54,7 +54,6 @@ create table if not exists public.people (
   phone       text,
   email       text,
   notes       text,
-  photo_path  text,                             -- path inside the private "photos" bucket
   sort        int not null default 0,
   updated_at  timestamptz not null default now(),
   updated_by  uuid default auth.uid()
@@ -62,6 +61,8 @@ create table if not exists public.people (
 -- Columns added after the first version; harmless if they already exist.
 alter table public.people add column if not exists job text;
 alter table public.households add column if not exists geometry jsonb;
+-- Photos were removed from the app; drop the old column if it is still there.
+alter table public.people drop column if exists photo_path;
 create index if not exists people_parcel_idx on public.people (parcel);
 
 -- Keep updated_at/updated_by current; the app uses updated_at to detect
@@ -110,34 +111,13 @@ create policy "allowed users" on public.people
   with check (public.is_allowed());
 
 -- ---------------------------------------------------------------------------
--- Photos: a private bucket. Files are only reachable through short-lived
--- signed links, and only allowed users can create those links.
+-- Photos were removed from the app. Clean up the old storage rules if present;
+-- delete the empty "photos" bucket itself in the dashboard (Storage).
 -- ---------------------------------------------------------------------------
-insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values ('photos', 'photos', false, 2097152, array['image/jpeg', 'image/png', 'image/webp'])
-on conflict (id) do update
-  set public = false,
-      file_size_limit = excluded.file_size_limit,
-      allowed_mime_types = excluded.allowed_mime_types;
-
 drop policy if exists "photos: allowed users read"   on storage.objects;
 drop policy if exists "photos: allowed users write"  on storage.objects;
 drop policy if exists "photos: allowed users update" on storage.objects;
 drop policy if exists "photos: allowed users delete" on storage.objects;
-
-create policy "photos: allowed users read" on storage.objects
-  for select to authenticated
-  using (bucket_id = 'photos' and public.is_allowed());
-create policy "photos: allowed users write" on storage.objects
-  for insert to authenticated
-  with check (bucket_id = 'photos' and public.is_allowed());
-create policy "photos: allowed users update" on storage.objects
-  for update to authenticated
-  using (bucket_id = 'photos' and public.is_allowed())
-  with check (bucket_id = 'photos' and public.is_allowed());
-create policy "photos: allowed users delete" on storage.objects
-  for delete to authenticated
-  using (bucket_id = 'photos' and public.is_allowed());
 
 -- ---------------------------------------------------------------------------
 -- Keep-alive: a tiny function the weekly GitHub Action calls so the free

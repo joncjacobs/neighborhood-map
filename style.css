@@ -229,6 +229,16 @@ main { position: relative; flex: 1; min-height: 0; }
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
 }
 .status[hidden] { display: none; }
+.status-action {
+  margin-left: 6px;
+  border: 0;
+  background: none;
+  color: #93c5fd;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
 
 /* ---- Login --------------------------------------------------------------- */
 .login {
@@ -324,7 +334,10 @@ button { font: inherit; }
 .hh-info .k { color: var(--muted); margin-right: 4px; }
 .hh-info .link { align-self: flex-start; }
 .add-btn { margin-top: 10px; width: 100%; }
-
+.deed { margin-top: 14px; font-size: 14px; }
+.deed summary { color: var(--muted); cursor: pointer; }
+.deed > div { margin-top: 6px; }
+.deed .muted { font-size: 12px; margin: 4px 0 0; }
 .edit-form {
   display: flex;
   flex-direction: column;

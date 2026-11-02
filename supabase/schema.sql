@@ -34,6 +34,7 @@ create table if not exists public.households (
   address       text not null,
   geometry      jsonb,                          -- GeoJSON Polygon/MultiPolygon of the lot
   display_name  text,                           -- map label override; blank = built from adults
+  introduced    boolean not null default false, -- names stay hidden until we've met them
   pets          text,
   how_we_know   text,
   notes         text,
@@ -60,6 +61,7 @@ create table if not exists public.people (
 -- Columns added after the first version; harmless if they already exist.
 alter table public.people add column if not exists job text;
 alter table public.households add column if not exists geometry jsonb;
+alter table public.households add column if not exists introduced boolean not null default false;
 -- Photos were removed from the app; drop the old column if it is still there.
 alter table public.people drop column if exists photo_path;
 -- The tax-bill name was removed too.

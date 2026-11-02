@@ -57,6 +57,11 @@
   function peopleOf(parcel) {
     return people.get(parcel) || [];
   }
+  // Names start out from the deed; they stay hidden until we've actually met.
+  function met(parcel) {
+    const h = households.get(parcel);
+    return Boolean(h && h.introduced);
+  }
   // "Daniel & Nicole Arb", "Evan Eby & Devon McVey", or the household's override.
   function labelFor(parcel) {
     const h = households.get(parcel);
@@ -87,9 +92,17 @@
   function telHref(phone) {
     return "tel:" + String(phone).replace(/[^\d+]/g, "");
   }
-  function showStatus(msg, ms) {
+  // action (optional): { label, run } adds a button to the message, e.g. Undo.
+  function showStatus(msg, ms, action) {
     const el = $("status");
     el.textContent = msg;
+    if (action) {
+      const btn = document.createElement("button");
+      btn.className = "status-action";
+      btn.textContent = action.label;
+      btn.addEventListener("click", () => { el.hidden = true; action.run(); });
+      el.append(" ", btn);
+    }
     el.hidden = !msg;
     clearTimeout(showStatus.t);
     if (msg && ms) showStatus.t = setTimeout(() => { el.hidden = true; }, ms);
@@ -100,6 +113,7 @@
   const hoverStyle = { weight: 3, fillOpacity: 0.4 };
   const dimStyle = { weight: 1, fillOpacity: 0.04, opacity: 0.4 };
   const selectedStyle = { color: "#ffffff", weight: 3, fillOpacity: 0.35 };
+  const unmetStyle = { dashArray: "4 5", fillOpacity: 0.05 };
   const entries = []; // { p: { parcel, address }, layer, center, match }
   const byParcel = new Map();
   const lots = L.featureGroup().addTo(map);
@@ -129,13 +143,14 @@
   }
 
   function applyStyle(entry) {
-    const style = Object.assign({}, baseStyle, entry.match ? {} : dimStyle, entry.p.parcel === openParcel ? selectedStyle : {});
+    const style = Object.assign({ dashArray: null }, baseStyle, met(entry.p.parcel) ? {} : unmetStyle,
+      entry.match ? {} : dimStyle, entry.p.parcel === openParcel ? selectedStyle : {});
     entry.layer.setStyle(style);
   }
   function refreshTooltips() {
     if (!canHover) return;
     entries.forEach((e) => {
-      const name = labelFor(e.p.parcel);
+      const name = met(e.p.parcel) && labelFor(e.p.parcel);
       e.layer.setTooltipContent(name ? `<b>${esc(name)}</b><span>${esc(e.p.address)}</span>` : `<b>${esc(e.p.address)}</b>`);
     });
   }
@@ -167,7 +182,7 @@
     labelLayer.clearLayers();
     if (nameMode === "off") return;
     entries.forEach((e) => {
-      if (!e.match || !households.size) return;
+      if (!e.match || !met(e.p.parcel)) return;
       const text = (nameMode === "full" ? labelFor(e.p.parcel) : firstNamesFor(e.p.parcel)) || "—";
       const m = L.marker(e.center, { opacity: 0, interactive: false, keyboard: false, icon: L.divIcon({ className: "", iconSize: [0, 0] }) });
       m.bindTooltip(esc(text), { permanent: true, direction: "center", className: "lot-label", interactive: false });
@@ -175,21 +190,44 @@
     });
   }
 
-  $("namesBtn").addEventListener("click", () => {
-    nameMode = NAME_MODES[nameMode].next;
+  function setNameMode(mode) {
+    if (!NAME_MODES[mode]) return;
+    nameMode = mode;
     $("namesBtn").setAttribute("aria-pressed", String(nameMode !== "off"));
     $("namesBtn").textContent = NAME_MODES[nameMode].button;
     buildLabels();
+  }
+  $("namesBtn").addEventListener("click", () => {
+    setNameMode(NAME_MODES[nameMode].next);
+    savePrefs();
   });
 
   // ---- Basemap toggle -----------------------------------------------------
   let onStreets = false;
-  $("baseBtn").addEventListener("click", () => {
-    onStreets = !onStreets;
+  function setStreets(on) {
+    onStreets = Boolean(on);
     map.removeLayer(onStreets ? satellite : streets);
     (onStreets ? streets : satellite).addTo(map);
     $("baseBtn").textContent = onStreets ? "Satellite" : "Street map";
+  }
+  $("baseBtn").addEventListener("click", () => {
+    setStreets(!onStreets);
+    savePrefs();
   });
+
+  // ---- Per-account preferences ----------------------------------------------
+  // Saved on the signed-in account (Supabase user metadata), so each of us gets
+  // our own choice on every device.
+  function applyPrefs(user) {
+    const prefs = (user && user.user_metadata && user.user_metadata.prefs) || {};
+    setNameMode(prefs.names || "off");
+    setStreets(prefs.basemap === "streets");
+  }
+  function savePrefs() {
+    if (!db) return;
+    db.auth.updateUser({ data: { prefs: { names: nameMode, basemap: onStreets ? "streets" : "satellite" } } })
+      .then(({ error }) => { if (error) showStatus("Couldn't save your settings: " + error.message, 5000); });
+  }
 
   // ---- Menu ---------------------------------------------------------------
   function setMenu(open) {
@@ -219,14 +257,16 @@
       streetLabel(a.p).localeCompare(streetLabel(b.p)) || parseInt(a.p.address, 10) - parseInt(b.p.address, 10));
     sorted.forEach((e) => {
       const h = households.get(e.p.parcel) || {};
-      const hay = [labelFor(e.p.parcel), e.p.address, h.pets, h.how_we_know, h.notes,
-        ...peopleOf(e.p.parcel).flatMap((p) => [fullName(p), p.notes, p.age_grade, p.job])].join(" ").toLowerCase();
+      const known = met(e.p.parcel);
+      const hay = (known ? [labelFor(e.p.parcel), e.p.address, h.pets, h.how_we_know, h.notes,
+        ...peopleOf(e.p.parcel).flatMap((p) => [fullName(p), p.notes, p.age_grade, p.job])] : [e.p.address]).join(" ").toLowerCase();
       e.match = !q || hay.includes(q);
       applyStyle(e);
       if (!e.match) return;
       const street = streetLabel(e.p);
       if (street !== lastStreet) { html += `<h2>${esc(street)}</h2>`; lastStreet = street; }
-      html += `<button data-parcel="${esc(e.p.parcel)}"><div class="who">${esc(labelFor(e.p.parcel) || "Unknown")}</div><div class="where">${esc(e.p.address)}</div></button>`;
+      const who = known ? esc(labelFor(e.p.parcel) || "Unknown") : '<span class="muted">Not met yet</span>';
+      html += `<button data-parcel="${esc(e.p.parcel)}"><div class="who">${who}</div><div class="where">${esc(e.p.address)}</div></button>`;
       count++;
     });
     $("list").innerHTML = count ? html : '<div class="empty">No matches.</div>';
@@ -325,7 +365,7 @@
         <label>Phone <input name="phone" type="tel" value="${v("phone")}"></label>
         <label>Email <input name="email" type="email" value="${v("email")}"></label>
       </div>
-      <label>Notes <textarea name="notes" rows="3">${v("notes")}</textarea></label>
+      <label>What they've told us <textarea name="notes" rows="3" placeholder="e.g. loves gardening, training for a marathon">${v("notes")}</textarea></label>
       <div class="form-actions">
         ${isNew ? "" : '<button type="button" class="link danger" data-action="delete-person">Delete person</button>'}
         <span class="spacer"></span>
@@ -341,8 +381,9 @@
       <label>Map label <input name="display_name" value="${v("display_name")}" placeholder="Leave blank to use the adults' names"></label>
       <label>Pets <input name="pets" value="${v("pets")}"></label>
       <label>How we know them <input name="how_we_know" value="${v("how_we_know")}"></label>
-      <label>Notes <textarea name="notes" rows="4">${v("notes")}</textarea></label>
+      <label>What they've told us <textarea name="notes" rows="4" placeholder="e.g. moved here from Ohio, kids go to the elementary school">${v("notes")}</textarea></label>
       <div class="form-actions">
+        <button type="button" class="link danger" data-action="set-met" data-value="false">We didn't actually meet them</button>
         <span class="spacer"></span>
         <button type="button" data-action="cancel">Cancel</button>
         <button type="submit" class="primary">Save</button>
@@ -362,6 +403,21 @@
         <div class="detail-body"><p class="muted">Sign in to see who lives here.</p></div>`;
       return;
     }
+    const closeBtn = '<button class="icon" data-action="close" aria-label="Close">&times;</button>';
+    if (!h.introduced) {
+      const deed = labelFor(parcel);
+      el.innerHTML = `
+        <div class="detail-head">
+          <div><h2>${esc(lot.address)}</h2><div class="muted">Not met yet</div></div>
+          ${closeBtn}
+        </div>
+        <div class="detail-body">
+          <button class="add-btn" data-action="set-met" data-value="true">We've met them</button>
+          ${deed ? `<details class="deed"><summary>Public name</summary><div>${esc(deed)}</div>
+            <p class="muted">From the county property record. Hidden on the map until you've met.</p></details>` : ""}
+        </div>`;
+      return;
+    }
     const ps = peopleOf(parcel);
     const adults = ps.filter((p) => p.role === "adult");
     const kids = ps.filter((p) => p.role === "child");
@@ -372,8 +428,8 @@
       <div class="hh-info">
         ${h.pets ? `<div><span class="k">Pets</span> ${esc(h.pets)}</div>` : ""}
         ${h.how_we_know ? `<div><span class="k">How we know them</span> ${esc(h.how_we_know)}</div>` : ""}
-        ${h.notes ? `<div class="note-text">${esc(h.notes)}</div>` : ""}
-        ${!h.pets && !h.how_we_know && !h.notes ? '<div class="muted">No notes yet.</div>' : ""}
+        ${h.notes ? `<div><span class="k">What they've told us</span></div><div class="note-text">${esc(h.notes)}</div>` : ""}
+        ${!h.pets && !h.how_we_know && !h.notes ? '<div class="muted">Nothing shared yet.</div>' : ""}
         <button class="link" data-action="edit-household">Edit household</button>
       </div>`;
 
@@ -383,7 +439,7 @@
           <h2>${esc(labelFor(parcel) || "Unknown")}</h2>
           <div class="muted">${esc(lot.address)}</div>
         </div>
-        <button class="icon" data-action="close" aria-label="Close">&times;</button>
+        ${closeBtn}
       </div>
       <div class="detail-body">
         ${!ps.length && !h.display_name ? '<div class="empty-note">Nobody listed here yet.</div>' : ""}
@@ -401,14 +457,16 @@
     if (!btn) return;
     const action = btn.dataset.action;
     if (action === "close") {
-      if (editing && !confirm("Discard your unsaved changes?")) return;
-      closeDetail();
+      closeDetail(); // also drops any open edit, like Cancel
     } else if (action === "edit-person") {
       editing = { kind: "person", id: btn.dataset.id }; renderDetail();
     } else if (action === "add-person") {
       editing = { kind: "new-person" }; renderDetail();
     } else if (action === "edit-household") {
       editing = { kind: "household" }; renderDetail();
+    } else if (action === "set-met") {
+      btn.disabled = true;
+      await setMet(openParcel, btn.dataset.value === "true");
     } else if (action === "cancel") {
       editing = null; renderDetail();
     } else if (action === "delete-person") {
@@ -460,6 +518,17 @@
     afterChange();
   }
 
+  // Marking a lot as met is one tap, so offer an Undo right away.
+  async function setMet(parcel, value) {
+    const saved = await guardedUpdate("households", "parcel", households.get(parcel), { introduced: value });
+    if (!saved) return;
+    households.set(saved.parcel, saved);
+    if (parcel === openParcel) editing = null;
+    afterChange();
+    if (value) showStatus("Marked as met.", 8000, { label: "Undo", run: () => setMet(parcel, false) });
+    else showStatus("Names hidden again.", 3000);
+  }
+
   async function savePerson(p, fields) {
     const saved = await guardedUpdate("people", "id", p, fields);
     if (!saved) return;
@@ -490,6 +559,7 @@
   }
 
   function afterChange() {
+    entries.forEach(applyStyle);
     refreshTooltips();
     renderList();
     renderDetail();
@@ -588,8 +658,12 @@
         // supabase-js re-sends SIGNED_IN when the tab regains focus; only load if
         // we have nothing yet (the visibility handler covers refreshes).
         // Deferred so the auth callback returns before we query.
-        if (!households.size && !lastLoad) setTimeout(loadAll, 0);
+        if (!households.size && !lastLoad) {
+          applyPrefs(session.user);
+          setTimeout(loadAll, 0);
+        }
       } else {
+        applyPrefs(null);
         clearData();
         showLogin(true);
       }

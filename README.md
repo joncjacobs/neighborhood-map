@@ -8,7 +8,7 @@ The database enforces this itself (row-level security), so nothing in the page's
 Signed out, the page shows a sign-in screen over an empty country-wide map.
 
 - **Tap** a lot (or hover on a computer) to see who lives there; tap to open details and edit.
-- **Show names** labels every lot.
+- **Show full names / Show first names / Hide names** cycles the labels on every lot.
 - **List** is searchable by name, address or notes.
 - **⋯ → Export data** downloads everything (except photo files) as a JSON backup.
 - When you switch back to the app, it re-fetches so you see each other's changes. If you both edit

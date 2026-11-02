@@ -7,7 +7,6 @@
     return;
   }
 
-  const LABEL_FULL_ZOOM = 19;          // below this, labels show surnames only
   const REFRESH_AFTER_MS = 30 * 1000;  // re-fetch when the app returns to the foreground
   const PHOTO_MAX_PX = 800;
   const SIGNED_URL_SECONDS = 15 * 60;  // photo links stop working after this
@@ -36,9 +35,9 @@
       maxZoom: 21, maxNativeZoom: 19, opacity: 0.8,
     }),
   ]);
-  const streets = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
-    maxZoom: 21, maxNativeZoom: 20, subdomains: "abcd",
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+  // Esri's street map: same server as the imagery, no API key needed.
+  const streets = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}", {
+    maxZoom: 21, maxNativeZoom: 19, attribution: "Tiles &copy; Esri",
   });
 
   // The public page knows nothing about where the lots are: it starts on a
@@ -77,12 +76,13 @@
     }
     return joinList(list.map(fullName));
   }
-  function shortLabelFor(parcel) {
-    const h = households.get(parcel);
-    if (!h) return "";
-    if (h.display_name) return h.display_name.split(/\s+/).slice(0, 2).join(" ");
-    const lasts = [...new Set(peopleOf(parcel).filter((p) => p.role === "adult").map((p) => p.last_name).filter(Boolean))];
-    return lasts.join(" / ") || (labelFor(parcel) || "—");
+  // "Daniel & Nicole"; falls back to the override (e.g. a company) when nobody is listed.
+  function firstNamesFor(parcel) {
+    const ps = peopleOf(parcel);
+    const adults = ps.filter((p) => p.role === "adult");
+    const list = adults.length ? adults : ps;
+    if (list.length) return joinList(list.map((p) => p.first_name));
+    return labelFor(parcel);
   }
   // Show the tax-bill name only when none of its words match anyone we have listed
   // (e.g. a bill still in the previous owner's name).
@@ -167,28 +167,32 @@
   }).observe(map.getContainer());
 
   // ---- Name labels (permanent tooltips at lot centers) ---------------------
-  const labelLayer = L.layerGroup();
-  let namesOn = false;
+  // The names button cycles hidden -> full names -> first names -> hidden.
+  // Its text says what the next tap will do.
+  const NAME_MODES = {
+    off:   { next: "full",  button: "Show full names" },
+    full:  { next: "first", button: "Show first names" },
+    first: { next: "off",   button: "Hide names" },
+  };
+  const labelLayer = L.layerGroup().addTo(map);
+  let nameMode = "off";
 
   function buildLabels() {
     labelLayer.clearLayers();
-    if (!namesOn) return;
-    const full = map.getZoom() >= LABEL_FULL_ZOOM;
+    if (nameMode === "off") return;
     entries.forEach((e) => {
       if (!e.match || !households.size) return;
-      const text = full ? (labelFor(e.p.parcel) || "—") : shortLabelFor(e.p.parcel);
+      const text = (nameMode === "full" ? labelFor(e.p.parcel) : firstNamesFor(e.p.parcel)) || "—";
       const m = L.marker(e.center, { opacity: 0, interactive: false, keyboard: false, icon: L.divIcon({ className: "", iconSize: [0, 0] }) });
       m.bindTooltip(esc(text), { permanent: true, direction: "center", className: "lot-label", interactive: false });
       labelLayer.addLayer(m);
     });
   }
-  map.on("zoomend", buildLabels);
 
   $("namesBtn").addEventListener("click", () => {
-    namesOn = !namesOn;
-    $("namesBtn").setAttribute("aria-pressed", String(namesOn));
-    $("namesBtn").textContent = namesOn ? "Hide names" : "Show names";
-    if (namesOn) labelLayer.addTo(map); else map.removeLayer(labelLayer);
+    nameMode = NAME_MODES[nameMode].next;
+    $("namesBtn").setAttribute("aria-pressed", String(nameMode !== "off"));
+    $("namesBtn").textContent = NAME_MODES[nameMode].button;
     buildLabels();
   });
 

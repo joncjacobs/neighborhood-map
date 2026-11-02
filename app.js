@@ -81,17 +81,6 @@
     if (list.length) return joinList(list.map((p) => p.first_name));
     return labelFor(parcel);
   }
-  // Show the tax-bill name only when none of its words match anyone we have listed
-  // (e.g. a bill still in the previous owner's name).
-  function taxNameDiffers(parcel) {
-    const h = households.get(parcel);
-    if (!h || !h.tax_name) return false;
-    const words = (s) => (s || "").toLowerCase().match(/[a-z]{2,}/g) || [];
-    const ignore = new Set(["llc", "trust", "inc", "properties", "jtrs", "tc"]);
-    const taxWords = new Set(words(h.tax_name).filter((w) => !ignore.has(w)));
-    const ours = [h.display_name, ...peopleOf(parcel).map((p) => p.last_name)].flatMap(words);
-    return !ours.some((w) => taxWords.has(w));
-  }
   function streetLabel(p) {
     return p.address.replace(/^\d+\s+/, "");
   }
@@ -397,8 +386,7 @@
         <button class="icon" data-action="close" aria-label="Close">&times;</button>
       </div>
       <div class="detail-body">
-        ${taxNameDiffers(parcel) ? `<div class="tax-note">Tax bill: ${esc(h.tax_name)}</div>` : ""}
-        ${!h.tax_name && !ps.length ? '<div class="tax-note">The county withholds the owner\'s name for this lot.</div>' : ""}
+        ${!ps.length && !h.display_name ? '<div class="empty-note">Nobody listed here yet.</div>' : ""}
         ${section("Adults", adults)}
         ${section("Kids", kids)}
         ${editing && editing.kind === "new-person" ? "<h3>New person</h3>" + personForm(null)

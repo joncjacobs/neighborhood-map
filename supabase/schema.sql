@@ -34,7 +34,6 @@ create table if not exists public.households (
   address       text not null,
   geometry      jsonb,                          -- GeoJSON Polygon/MultiPolygon of the lot
   display_name  text,                           -- map label override; blank = built from adults
-  tax_name      text,                           -- name on the 2026 tax bill (reference only)
   pets          text,
   how_we_know   text,
   notes         text,
@@ -63,6 +62,8 @@ alter table public.people add column if not exists job text;
 alter table public.households add column if not exists geometry jsonb;
 -- Photos were removed from the app; drop the old column if it is still there.
 alter table public.people drop column if exists photo_path;
+-- The tax-bill name was removed too.
+alter table public.households drop column if exists tax_name;
 create index if not exists people_parcel_idx on public.people (parcel);
 
 -- Keep updated_at/updated_by current; the app uses updated_at to detect

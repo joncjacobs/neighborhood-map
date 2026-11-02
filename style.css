@@ -306,7 +306,7 @@ button { font: inherit; }
   letter-spacing: 0.05em;
   color: var(--muted);
 }
-.tax-note {
+.empty-note {
   margin-top: 10px;
   padding: 8px 10px;
   border-radius: 8px;
